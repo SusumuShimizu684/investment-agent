@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AI 投顾持仓看板</title>
+<style>
+  :root{
+    --bg:#f3f4f6; --card:#fff; --line:#e5e7eb; --line-soft:#f0f1f3;
+    --text:#14161a; --muted:#70767e; --faint:#9aa1aa;
+    --up:#d3372f; --down:#12915c;
+    --accent:#2f6fed;
+    --shadow:0 1px 2px rgba(16,24,40,.04),0 4px 16px rgba(16,24,40,.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0f1115; --card:#171a1f; --line:#262b33; --line-soft:#1e2229;
+      --text:#eef1f5; --muted:#9ba3ae; --faint:#6d7580;
+      --up:#f2564d; --down:#2ebd85;
+      --accent:#6b9bff;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25);
+    }
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    font-size:14px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:28px 20px 56px}
+  @media(max-width:640px){ .wrap{padding:18px 14px 44px} }
+
+  /* ---------- header ---------- */
+  header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px;flex-wrap:wrap}
+  h1{font-size:20px;font-weight:650;margin:0;letter-spacing:-.2px}
+  .sub{font-size:12.5px;color:var(--muted);margin-top:5px}
+  .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--down);margin-right:6px;vertical-align:middle;position:relative;top:-1px}
+  .dot.off{background:var(--faint)}
+
+  /* ---------- kpi ---------- */
+  .kpis{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:12px;margin-bottom:12px}
+  @media(max-width:720px){ .kpis{grid-template-columns:1fr 1fr} .kpi.hero{grid-column:1/-1} }
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:var(--shadow)}
+  .kpi .label{font-size:12px;color:var(--muted);letter-spacing:.2px;margin-bottom:6px}
+  .kpi .num{font-size:26px;font-weight:640;letter-spacing:-.6px;font-variant-numeric:tabular-nums}
+  .kpi.hero .num{font-size:32px}
+  .kpi .foot{font-size:12px;color:var(--faint);margin-top:5px}
+  .kpi .foot b{font-weight:600}
+  @media(max-width:640px){ .kpi .num{font-size:22px} .kpi.hero .num{font-size:28px} }
+
+  .up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--muted)}
+
+  /* ---------- groups ---------- */
+  .groups{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+  @media(max-width:720px){ .groups{grid-template-columns:1fr} }
+  .gcard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;box-shadow:var(--shadow)}
+  .ghead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:2px}
+  .gtitle{font-size:14.5px;font-weight:620}
+  .gweight{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .gnote{font-size:11.5px;color:var(--faint);margin-bottom:12px}
+  .gbar{height:5px;border-radius:3px;background:var(--line-soft);overflow:hidden;margin-bottom:13px}
+  .gbar i{display:block;height:100%;border-radius:3px;background:var(--accent);opacity:.75}
+  .gstats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .gstats div{font-size:11.5px;color:var(--muted)}
+  .gstats b{display:block;font-size:15px;font-weight:620;margin-top:3px;font-variant-numeric:tabular-nums}
+  @media(max-width:400px){ .gstats b{font-size:13.5px} }
+
+  /* ---------- chart ---------- */
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden}
+  .phead{display:flex;align-items:center;justify-content:space-between;padding:15px 18px 0}
+  .ptitle{font-size:13.5px;font-weight:620}
+  .pmeta{font-size:11.5px;color:var(--faint);font-variant-numeric:tabular-nums}
+  .chartbox{padding:8px 10px 12px;height:186px;position:relative}
+  canvas{width:100%;height:100%;display:block}
+  .empty{padding:34px 18px;text-align:center;color:var(--faint);font-size:12.5px}
+
+  /* ---------- table ---------- */
+  .tabs{display:flex;gap:6px;padding:13px 14px 0}
+  .tab{border:1px solid var(--line);background:transparent;color:var(--muted);font-size:12.5px;
+       padding:5px 13px;border-radius:999px;cursor:pointer;font-family:inherit;transition:.15s}
+  .tab:hover{border-color:var(--faint)}
+  .tab.on{background:var(--text);color:var(--bg);border-color:var(--text)}
+
+  .tablewrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+  thead th{
+    position:sticky;top:0;background:var(--card);z-index:2;
+    font-size:11.5px;font-weight:600;color:var(--muted);text-align:right;
+    padding:12px 10px 9px;white-space:nowrap;border-bottom:1px solid var(--line);
+  }
+  thead th:first-child{text-align:left;padding-left:18px}
+  thead th:last-child{padding-right:18px}
+  tbody td{padding:11px 10px;text-align:right;border-bottom:1px solid var(--line-soft);white-space:nowrap;font-size:13px}
+  tbody td:first-child{text-align:left;padding-left:18px;white-space:normal}
+  tbody td:last-child{padding-right:18px}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover td{background:var(--line-soft)}
+  .nm{font-weight:560;font-size:13px;line-height:1.35}
+  .cd{font-size:11px;color:var(--faint);margin-top:2px;letter-spacing:.3px}
+  .gflag{display:inline-block;font-size:10px;font-weight:600;padding:1px 5px;border-radius:4px;
+         background:var(--line-soft);color:var(--muted);margin-right:6px;vertical-align:1px}
+  .gflag.a{background:rgba(47,111,237,.1);color:var(--accent)}
+  .lagtag{display:inline-block;font-size:10px;padding:1px 5px;border-radius:4px;margin-left:6px;
+          background:rgba(217,119,6,.12);color:#b45309;vertical-align:1px}
+  @media (prefers-color-scheme: dark){ .lagtag{background:rgba(251,191,36,.15);color:#fbbf24} }
+
+  /* mobile: hide less critical cols */
+  @media(max-width:700px){
+    .col-cost,.col-daypct,.col-pnlpct{display:none}
+    tbody td{font-size:12.5px;padding:10px 7px}
+    thead th{padding:10px 7px 8px}
+  }
+  @media(max-width:430px){
+    .col-weight{display:none}
+  }
+
+  footer{margin-top:22px;font-size:11.5px;color:var(--faint);line-height:1.7}
+  footer code{background:var(--line-soft);padding:1px 5px;border-radius:4px;font-size:11px}
+  .banner{background:rgba(217,119,6,.1);border:1px solid rgba(217,119,6,.25);color:#b45309;
+          padding:10px 14px;border-radius:10px;font-size:12.5px;margin-bottom:12px}
+  @media (prefers-color-scheme: dark){ .banner{color:#fbbf24} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>AI 投顾持仓看板</h1>
+      <div class="sub" id="subline">正在读取数据…</div>
+    </div>
+  </header>
+
+  <div id="banner"></div>
+
+  <div class="kpis">
+    <div class="kpi hero">
+      <div class="label">总市值</div>
+      <div class="num" id="k-value">—</div>
+      <div class="foot" id="k-value-foot"></div>
+    </div>
+    <div class="kpi">
+      <div class="label">累计盈亏</div>
+      <div class="num" id="k-pnl">—</div>
+      <div class="foot" id="k-pnl-foot"></div>
+    </div>
+    <div class="kpi">
+      <div class="label">当日盈亏</div>
+      <div class="num" id="k-day">—</div>
+      <div class="foot" id="k-day-foot"></div>
+    </div>
+  </div>
+
+  <div class="groups" id="groups"></div>
+
+  <div class="panel">
+    <div class="phead">
+      <div class="ptitle">总市值走势</div>
+      <div class="pmeta" id="chart-meta"></div>
+    </div>
+    <div class="chartbox" id="chartbox"><canvas id="chart"></canvas></div>
+  </div>
+
+  <div class="panel">
+    <div class="tabs" id="tabs">
+      <button class="tab on" data-g="all">全部</button>
+      <button class="tab" data-g="A">均衡十字星</button>
+      <button class="tab" data-g="B">组合外自持</button>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>基金 / 代码</th>
+            <th>净值</th>
+            <th class="col-daypct">日涨跌</th>
+            <th>市值</th>
+            <th class="col-weight">占比</th>
+            <th class="col-cost">累计盈亏</th>
+            <th class="col-pnlpct">收益率</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer id="footer"></footer>
+</div>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  let DATA = null;
+
+  const money = v => (v===null||v===undefined||isNaN(v)) ? '—'
+    : '¥' + Number(v).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const signed = v => (v===null||v===undefined||isNaN(v)) ? '—'
+    : (v>0?'+':'') + Number(v).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const pct = v => (v===null||v===undefined||isNaN(v)) ? '—'
+    : (v>0?'+':'') + Number(v).toFixed(2) + '%';
+  const cls = v => v>0?'up':(v<0?'down':'flat');
+  const esc = s => String(s||'').replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));
+
+  function render(d){
+    DATA = d;
+    const s = d.summary;
+
+    // 顶部状态
+    const gm = d.generated_at.slice(5,16).replace('-','/');
+    $('subline').innerHTML =
+      '<span class="dot' + (s.no_new_nav?' off':'') + '"></span>' +
+      '净值截至 ' + d.trade_date + '　·　更新于 ' + gm;
+
+    // 休市提示
+    if (s.no_new_nav){
+      $('banner').innerHTML = '<div class="banner">本次运行没有取到新的净值，可能遇到了休市日。下列数字沿用最近一个交易日（' + d.trade_date + '）的数据。</div>';
+    } else if (d.lagging && d.lagging.length){
+      const names = d.lagging.map(x=>x.name.replace(/\(QDII\)C?/,'').slice(0,14)).join('、');
+      $('banner').innerHTML = '<div class="banner">' + d.lagging.length + ' 只净值滞后一日的品种已按最新公布值计算：' + esc(names) + '。QDII 净值天然 T+1，属正常。</div>';
+    }
+
+    // KPI
+    $('k-value').textContent = money(s.total_value);
+    $('k-value-foot').innerHTML = '投入成本 <b>' + money(s.total_cost) + '</b>　·　' + s.total + ' 只基金';
+
+    $('k-pnl').textContent = signed(s.total_pnl);
+    $('k-pnl').className = 'num ' + cls(s.total_pnl);
+    $('k-pnl-foot').innerHTML = '收益率 <b>' + pct(s.total_pnl_pct) + '</b>';
+
+    $('k-day').textContent = signed(s.day_pnl);
+    $('k-day').className = 'num ' + cls(s.day_pnl);
+    $('k-day-foot').innerHTML = '<b class="up">' + s.up + '</b> 涨 / <b class="down">' + s.down + '</b> 跌' +
+      (s.flat?(' / ' + s.flat + ' 平'):'') + '　·　' + pct(s.day_pnl_pct);
+
+    // 分组卡片
+    $('groups').innerHTML = ['A','B'].map(k=>{
+      const g = d.groups[k]; if(!g) return '';
+      return '<div class="gcard">' +
+        '<div class="ghead"><div class="gtitle">' + esc(g.title) + '</div>' +
+        '<div class="gweight">' + g.count + ' 只 · ' + (g.weight!==null?g.weight.toFixed(2)+'%':'—') + '</div></div>' +
+        '<div class="gnote">' + esc(g.note) + '</div>' +
+        '<div class="gbar"><i style="width:' + Math.min(100, g.weight||0) + '%"></i></div>' +
+        '<div class="gstats">' +
+          '<div>市值<b>' + money(g.value) + '</b></div>' +
+          '<div>当日<b class="' + cls(g.day_pnl) + '">' + signed(g.day_pnl) + '</b></div>' +
+          '<div>累计<b class="' + cls(g.pnl) + '">' + pct(g.pnl_pct) + '</b></div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    renderChart(d.history || []);
+    renderTable('all');
+
+    // tabs
+    $('tabs').onclick = e => {
+      const b = e.target.closest('.tab'); if(!b) return;
+      [...$('tabs').children].forEach(x=>x.classList.toggle('on', x===b));
+      renderTable(b.dataset.g);
+    };
+
+    $('footer').innerHTML =
+      '数据源：雪球蛋卷公开接口，每个交易日 20:30（北京时间）由 GitHub Actions 自动更新。<br>' +
+      '净值口径：单位净值取最新公布值；当日盈亏用日增长率反推，比净值两位小数相减更准。QDII 净值滞后一日属正常。<br>' +
+      '份额与成本来自 <code>holdings.csv</code>，调整持仓请改这个文件后提交，下一次运行自动生效。';
+  }
+
+  function renderTable(group){
+    if(!DATA) return;
+    let rows = DATA.holdings.slice();
+    if(group !== 'all') rows = rows.filter(r=>r.group===group);
+    rows.sort((a,b)=>(b.value||0)-(a.value||0));
+
+    $('tbody').innerHTML = rows.map(r=>{
+      const lag = (r.lag && r.lag>0) ? '<span class="lagtag">滞后' + r.lag + '日</span>' : '';
+      return '<tr>' +
+        '<td><div class="nm">' + (group==='all'?'<span class="gflag '+r.group.toLowerCase()+'">'+r.group+'</span>':'') +
+          esc(r.name) + lag + '</div><div class="cd">' + r.code + '　' + (r.nav_date||'—') + '</div></td>' +
+        '<td>' + (r.nav!=null?Number(r.nav).toFixed(4):'—') + '</td>' +
+        '<td class="col-daypct ' + cls(r.day_pct) + '">' + pct(r.day_pct) + '</td>' +
+        '<td>' + money(r.value) + '</td>' +
+        '<td class="col-weight">' + (r.weight!=null?r.weight.toFixed(2)+'%':'—') + '</td>' +
+        '<td class="col-cost ' + cls(r.pnl) + '">' + signed(r.pnl) + '</td>' +
+        '<td class="col-pnlpct ' + cls(r.pnl_pct) + '">' + pct(r.pnl_pct) + '</td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  /* ---------- 折线图 ---------- */
+  function renderChart(hist){
+    const cv = $('chart'), box = $('chartbox');
+    if(!hist.length){ $('chart-meta').textContent=''; return; }
+    $('chart-meta').textContent = hist.length>1 ? (hist.length + ' 个交易日') : '历史数据积累中';
+
+    const dpr = window.devicePixelRatio || 1;
+    const W = box.clientWidth, H = box.clientHeight;
+    cv.width = W*dpr; cv.height = H*dpr;
+    cv.style.width = W+'px'; cv.style.height = H+'px';
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,W,H);
+
+    const css = getComputedStyle(document.documentElement);
+    const cUp = css.getPropertyValue('--up').trim();
+    const cLine = css.getPropertyValue('--line').trim();
+    const cMuted = css.getPropertyValue('--muted').trim();
+    const cAccent = css.getPropertyValue('--accent').trim();
+
+    const padL=58, padR=14, padT=12, padB=22;
+    const iw = W-padL-padR, ih = H-padT-padB;
+    const vals = hist.map(h=>h.value);
+    let min = Math.min(...vals), max = Math.max(...vals);
+    if(max-min < 1){ const c=(max+min)/2; min=c-200; max=c+200; }
+    const pad=(max-min)*0.18; min-=pad; max+=pad;
+
+    const X = i => hist.length===1 ? padL+iw/2 : padL + iw*i/(hist.length-1);
+    const Y = v => padT + ih*(1-(v-min)/(max-min));
+
+    // 网格 + Y 轴标签
+    ctx.font = '11px -apple-system,"PingFang SC",sans-serif';
+    ctx.fillStyle = cMuted; ctx.textAlign='right'; ctx.textBaseline='middle';
+    for(let i=0;i<=3;i++){
+      const v = min + (max-min)*i/3;
+      const y = Y(v);
+      ctx.strokeStyle = cLine; ctx.globalAlpha=.7; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
+      ctx.globalAlpha=1;
+      ctx.fillText((v/10000).toFixed(1)+'万', padL-9, y);
+    }
+
+    // 面积
+    const grad = ctx.createLinearGradient(0,padT,0,padT+ih);
+    grad.addColorStop(0, hexA(cAccent,.18));
+    grad.addColorStop(1, hexA(cAccent,0));
+    ctx.beginPath();
+    ctx.moveTo(X(0), Y(hist[0].value));
+    hist.forEach((h,i)=>{ if(i) ctx.lineTo(X(i),Y(h.value)); });
+    ctx.lineTo(X(hist.length-1), padT+ih);
+    ctx.lineTo(X(0), padT+ih);
+    ctx.closePath(); ctx.fillStyle = grad; ctx.fill();
+
+    // 线
+    ctx.beginPath();
+    hist.forEach((h,i)=>{ i?ctx.lineTo(X(i),Y(h.value)):ctx.moveTo(X(i),Y(h.value)); });
+    ctx.strokeStyle = cAccent; ctx.lineWidth = 2; ctx.lineJoin='round'; ctx.lineCap='round';
+    ctx.stroke();
+
+    // 末点
+    const li = hist.length-1;
+    ctx.beginPath(); ctx.arc(X(li), Y(hist[li].value), 3.2, 0, Math.PI*2);
+    ctx.fillStyle = cAccent; ctx.fill();
+    ctx.strokeStyle = css.getPropertyValue('--card').trim(); ctx.lineWidth=1.6; ctx.stroke();
+
+    // X 轴首尾日期
+    ctx.fillStyle=cMuted; ctx.textBaseline='top'; ctx.font='11px -apple-system,"PingFang SC",sans-serif';
+    ctx.textAlign='left';  ctx.fillText(hist[0].date.slice(5), padL, padT+ih+7);
+    if(hist.length>1){ ctx.textAlign='right'; ctx.fillText(hist[li].date.slice(5), W-padR, padT+ih+7); }
+
+    if(hist.length===1){
+      ctx.fillStyle=cMuted; ctx.textAlign='center'; ctx.textBaseline='bottom'; ctx.font='12px -apple-system,"PingFang SC",sans-serif';
+      ctx.fillText('首日记录，明日起开始形成曲线', W/2, padT+ih-6);
+    }
+  }
+
+  function hexA(hex,a){
+    hex = hex.replace('#','');
+    if(hex.length===3) hex = hex.split('').map(c=>c+c).join('');
+    const r=parseInt(hex.slice(0,2),16), g=parseInt(hex.slice(2,4),16), b=parseInt(hex.slice(4,6),16);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+
+  let rt;
+  window.addEventListener('resize', ()=>{ clearTimeout(rt); rt=setTimeout(()=>{ if(DATA) renderChart(DATA.history||[]); },150); });
+
+  fetch('data.json?t='+Date.now())
+    .then(r=>r.json())
+    .then(render)
+    .catch(e=>{
+      $('subline').textContent = '数据加载失败';
+      $('banner').innerHTML = '<div class="banner">读取 data.json 失败：' + esc(e.message) + '</div>';
+    });
+})();
+</script>
+</body>
+</html>
